@@ -19,7 +19,12 @@ async function checkMovixUrl() {
 
     browser = await puppeteer.launch({
       headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null, // Requis pour Docker
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage", // Évite les crashs de mémoire dans Docker
+      ],
     });
     const page = await browser.newPage();
 
