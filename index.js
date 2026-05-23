@@ -91,7 +91,7 @@ async function checkMovixUrl() {
 client.once("ready", () => {
   console.log(`🤖 Bot connecté en tant que : ${client.user.tag}`);
   checkMovixUrl();
-  setInterval(checkMovixUrl, 3600000);
+  setInterval(checkMovixUrl, 1800000);
 });
 
 client.login(process.env.TOKEN);
