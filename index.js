@@ -176,7 +176,7 @@ client.once("clientReady", async () => {
   console.log("---------------------------------------\n");
 
   checkMovixUrl();
-  setInterval(checkMovixUrl, 60000);
+  setInterval(checkMovixUrl, 1800000);
 });
 
 client.login(process.env.TOKEN);
