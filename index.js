@@ -13,7 +13,7 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-const TARGET_URL = "https://movix.health";
+const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
