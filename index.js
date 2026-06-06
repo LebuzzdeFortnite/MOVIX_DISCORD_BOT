@@ -13,17 +13,16 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
+// Nouvelle URL de base mise à jour
 const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
-// --- FONCTION DE TRACKING MOVIX (AVEC TOUS LES LOGS REMIS) ---
+// --- FONCTION DE TRACKING MOVIX ---
 async function checkMovixUrl() {
   let browser;
   try {
-    console.log(
-      "\n[🔍 PUPPETEER] Lancement du navigateur pour vérifier Movix...",
-    );
+    console.log("\n[🔍 PUPPETEER] Lancement du navigateur pour vérifier Movix...");
 
     browser = await puppeteer.launch({
       headless: "new",
@@ -39,56 +38,43 @@ async function checkMovixUrl() {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     );
 
-    console.log(
-      `[🔍 PUPPETEER] Connexion à l'adresse cible : ${TARGET_URL}...`,
-    );
+    console.log(`[🔍 PUPPETEER] Connexion à l'adresse cible : ${TARGET_URL}...`);
     await page.goto(TARGET_URL, { waitUntil: "networkidle2", timeout: 60000 });
 
     console.log("[🔍 PUPPETEER] Attente du chargement des scripts (5s)...");
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    console.log(
-      "[🔍 PUPPETEER] Analyse et extraction du code source de la page...",
-    );
+    console.log("[🔍 PUPPETEER] Analyse et extraction du code source de la page...");
     const pageContent = await page.content();
     await browser.close();
 
-    const matches = pageContent.match(
-      /https?:\/\/[a-zA-Z0-9.-]*movix\.[a-zA-Z0-9-]+/gi,
-    );
+    const matches = pageContent.match(/https?:\/\/[a-zA-Z0-9.-]*movix\.[a-zA-Z0-9-]+/gi);
     let currentUrl = "";
 
     if (matches) {
       const cleanUrls = matches
         .map((url) => url.toLowerCase())
-        .filter((url) => !url.includes("movix.health"));
+        // CORRECTION ICI : On exclut le domaine de base actuel (movix.online) pour trouver le vrai lien de secours
+        .filter((url) => !url.includes("movix.online")); 
       if (cleanUrls.length > 0) {
         currentUrl = cleanUrls[0];
       }
     }
 
     if (!currentUrl) {
-      console.log(
-        "⚠️ [MOVIX] Aucun domaine alternatif détecté dans le code source.",
-      );
+      console.log("⚠️ [MOVIX] Aucun domaine alternatif détecté dans le code source.");
       return;
     }
 
     currentUrl = currentUrl.replace(/['"; ]+$/, "");
 
     console.log(`[MOVIX] URL trouvée sur le site : ${currentUrl}`);
-    console.log(
-      `[MOVIX] Dernière URL enregistrée par le bot : ${lastTrackedUrl || "Aucune (Premier scan)"}`,
-    );
+    console.log(`[MOVIX] Dernière URL enregistrée par le bot : ${lastTrackedUrl || "Aucune (Premier scan)"}`);
 
     if (currentUrl !== lastTrackedUrl) {
-      console.log(
-        `🚨 [MOVIX] NOUVELLE URL DÉTECTÉE ! Envoi du message sur Discord...`,
-      );
+      console.log(`🚨 [MOVIX] NOUVELLE URL DÉTECTÉE ! Envoi du message sur Discord...`);
 
-      const channel = await client.channels
-        .fetch(process.env.CHANNEL)
-        .catch(() => null);
+      const channel = await client.channels.fetch(process.env.CHANNEL).catch(() => null);
       if (channel) {
         await channel.send(
           `🚨 **Mise à jour de l'adresse Movix !**\nLe nouveau domaine actif est disponible ici : ${currentUrl}`,
@@ -96,32 +82,23 @@ async function checkMovixUrl() {
         lastTrackedUrl = currentUrl;
         console.log("✅ [MOVIX] Message envoyé avec succès.");
       } else {
-        console.error(
-          "❌ [MOVIX] Erreur : Impossible de trouver le salon Discord configuré.",
-        );
+        console.error("❌ [MOVIX] Erreur : Impossible de trouver le salon Discord configuré.");
       }
     } else {
       console.log(`ℹ️ [MOVIX] L'URL n'a pas changé. Rien à envoyer.`);
     }
   } catch (error) {
-    console.error(
-      "❌ [PUPPETEER] Erreur critique lors du tracking :",
-      error.message,
-    );
+    console.error("❌ [PUPPETEER] Erreur critique lors du tracking :", error.message);
     if (browser) await browser.close();
   }
 }
 
 // === SÉCURITÉ ANTI-SUPPRESSION SALON AFK ===
 client.on("channelDelete", async (channel) => {
-  console.log(
-    `\n[🚫 SUPPRESSION] Un salon vient d'être supprimé : ${channel.name} (${channel.id})`,
-  );
+  console.log(`\n[🚫 SUPPRESSION] Un salon vient d'être supprimé : ${channel.name} (${channel.id})`);
 
   if (channel.id === savedAfkChannelId) {
-    console.log(
-      `🎯 [AFK] Le salon supprimé correspond à notre salon AFK sauvegardé ! Récréation...`,
-    );
+    console.log(`🎯 [AFK] Le salon supprimé correspond à notre salon AFK sauvegardé ! Récréation...`);
 
     try {
       const guild = channel.guild;
@@ -141,19 +118,12 @@ client.on("channelDelete", async (channel) => {
       });
 
       savedAfkChannelId = newAfkChannel.id;
-      console.log(
-        `⚙️ [AFK] Serveur reconfiguré. Nouvel ID AFK en mémoire : ${savedAfkChannelId}`,
-      );
+      console.log(`⚙️ [AFK] Serveur reconfiguré. Nouvel ID AFK en mémoire : ${savedAfkChannelId}`);
     } catch (error) {
-      console.error(
-        "❌ [AFK] Erreur pendant la reconstruction :",
-        error.message,
-      );
+      console.error("❌ [AFK] Erreur pendant la reconstruction :", error.message);
     }
   } else {
-    console.log(
-      `ℹ️ [AFK] Ce salon n'était pas le salon AFK officiel. Le bot ne fait rien.`,
-    );
+    console.log(`ℹ️ [AFK] Ce salon n'était pas le salon AFK officiel. Le bot ne fait rien.`);
   }
 });
 
@@ -164,19 +134,17 @@ client.once("clientReady", async () => {
   client.guilds.cache.forEach((guild) => {
     if (guild.afkChannelId) {
       savedAfkChannelId = guild.afkChannelId;
-      console.log(
-        `💾 ID AFK mis en cache : ${savedAfkChannelId} (Serveur: ${guild.name})`,
-      );
+      console.log(`💾 ID AFK mis en cache : ${savedAfkChannelId} (Serveur: ${guild.name})`);
     } else {
-      console.log(
-        `⚠️ Attention : Aucun salon AFK configuré pour "${guild.name}".`,
-      );
+      console.log(`⚠️ Attention : Aucun salon AFK configuré pour "${guild.name}".`);
     }
   });
   console.log("---------------------------------------\n");
 
   checkMovixUrl();
-  setInterval(checkMovixUrl, 1800000);
+  
+  
+  setInterval(checkMovixUrl, 1800000); 
 });
 
 client.login(process.env.TOKEN);
