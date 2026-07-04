@@ -18,25 +18,30 @@ const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
-// --- FONCTION DE TRACKING MOVIX (SOLUTION D'EXTRACTION AVANCÉE) ---
+// --- FONCTION DE TRACKING MOVIX (BYPASS ANTI-BOT & CONFIGURATION) ---
 async function checkMovixUrl() {
   let browser;
   try {
-    console.log("\n[🔍 PUPPETEER] Lancement du navigateur pour vérifier Movix...");
+    console.log("\n[🔍 PUPPETEER] Lancement du navigateur (Mode furtif)...");
 
     browser = await puppeteer.launch({
-      headless: "new",
+      // "false" force le navigateur à se comporter à 100% comme un vrai Chrome humain
+      headless: false, 
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
-        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled", // Masque le drapeau "robot" de Puppeteer
         "--ignore-certificate-errors",
       ],
     });
+    
     const page = await browser.newPage();
+    
+    // Déguisement de la fenêtre
+    await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     );
 
     console.log(`[🔍 PUPPETEER] Connexion à l'adresse cible : ${TARGET_URL}...`);
@@ -45,31 +50,30 @@ async function checkMovixUrl() {
     console.log("[🔍 PUPPETEER] Attente du chargement complet (5s)...");
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
+    // --- ZONE DE DEBUGGAGE ---
+    const pageTitle = await page.title();
+    console.log(`[🔍 PUPPETEER] Titre de la page détectée : "${pageTitle}"`);
+    // -------------------------
+
     console.log("[🔍 PUPPETEER] Extraction via sélecteurs profonds...");
 
-    // On va chercher tous les textes possibles directement dans le DOM via une fonction native
     const detectedUrl = await page.evaluate(() => {
       const foundDomains = [];
-      // On inspecte tous les éléments de la page
       const allElements = document.getElementsByTagName("*");
       
       for (let el of allElements) {
-        // 1. Analyse du texte de l'élément
         if (el.textContent) {
           const matches = el.textContent.match(/movix\.[a-z0-9]+/gi);
           if (matches) foundDomains.push(...matches);
         }
-        // 2. Analyse du HTML de l'élément (au cas où c'est dans un attribut href, id, class ou alt)
         const htmlMatches = el.innerHTML ? el.innerHTML.match(/movix\.[a-z0-9]+/gi) : null;
         if (htmlMatches) foundDomains.push(...htmlMatches);
       }
 
-      // Nettoyage et filtrage des résultats
       const cleanDomains = foundDomains
         .map(d => d.toLowerCase().trim())
         .filter(d => d !== "movix.online" && d !== "movix.health" && d !== "movix.help" && d !== "movix.tax" && d !== "movix");
 
-      // On retourne le premier domaine alternatif valide trouvé (ex: movix.date)
       return cleanDomains.length > 0 ? cleanDomains[0] : null;
     });
 
