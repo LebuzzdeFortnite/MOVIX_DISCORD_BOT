@@ -13,13 +13,12 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// URL de base
+// URL de base de la passerelle
 const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
-// --- FONCTION DE TRACKING MOVIX ---
-// --- FONCTION DE TRACKING MOVIX (CIBLAGE DU SPAN TRUNCATE) ---
+// --- FONCTION DE TRACKING MOVIX (ALGORITHME TEXTUEL ROBUSTE) ---
 async function checkMovixUrl() {
   let browser;
   try {
@@ -32,7 +31,7 @@ async function checkMovixUrl() {
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--ignore-certificate-errors",
+        "--ignore-certificate-errors", // Ignore l'erreur SSL de la passerelle
       ],
     });
     const page = await browser.newPage();
@@ -46,37 +45,46 @@ async function checkMovixUrl() {
     console.log("[🔍 PUPPETEER] Attente du chargement complet (5s)...");
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    console.log("[🔍 PUPPETEER] Extraction du domaine depuis le span du bouton...");
+    console.log("[🔍 PUPPETEER] Extraction globale du texte visible à l'écran...");
 
-    // Ciblage précis basé sur image_9086c8.png
-    const detectedUrl = await page.evaluate(() => {
-      // On récupère spécifiquement les éléments span de la page
-      const spans = document.querySelectorAll("span.truncate, span, button");
-      
-      for (let el of spans) {
-        const text = el.textContent ? el.textContent.trim() : "";
-        
-        // On cherche "movix." à l'intérieur du texte (ex: "Accéder à movix.date")
-        if (text.toLowerCase().includes("movix.")) {
-          const match = text.match(/movix\.[a-zA-Z0-9]+/i);
-          if (match) {
-            const cleanMatch = match[0].toLowerCase().trim();
-            // On ignore le domaine actuel pour ne prendre que le nouveau
-            if (cleanMatch !== "movix.online") {
-              return "https://" + cleanMatch;
-            }
-          }
+    // Option 1 : Récupération du texte brut visible à l'écran
+    const pageText = await page.evaluate(() => document.body ? document.body.innerText : "");
+    
+    let currentUrl = "";
+    
+    // On cherche un motif du type "movix.extension" (ex: movix.date)
+    const match = pageText.match(/movix\.[a-zA-Z0-9]+/i);
+    
+    if (match) {
+      const cleanMatch = match[0].toLowerCase().trim();
+      // On s'assure d'ignorer la page d'atterrissage elle-même
+      if (cleanMatch !== "movix.online") {
+        currentUrl = "https://" + cleanMatch;
+      }
+    }
+
+    // --- PLAN DE SECOURS (Si l'option 1 n'a rien donné) ---
+    // On va scanner directement le code source HTML brut complet pour extraire le domaine de secours
+    if (!currentUrl) {
+      const rawHtml = await page.content();
+      const rawMatches = rawHtml.match(/movix\.[a-zA-Z0-9-.]+/gi);
+      if (rawMatches) {
+        // On isole un domaine qui n'est ni l'ancien (health) ni l'actuel (online)
+        const uniqueDomain = rawMatches
+          .map(d => d.toLowerCase().trim())
+          .find(d => !d.includes("online") && !d.includes("health") && d !== "movix.");
+          
+        if (uniqueDomain) {
+          // Nettoyage final des caractères de ponctuation résiduels
+          currentUrl = "https://" + uniqueDomain.replace(/[^a-z0-9.]/g, ""); 
         }
       }
-      return null;
-    });
+    }
 
     await browser.close();
 
-    let currentUrl = detectedUrl;
-
     if (!currentUrl) {
-      console.log("⚠️ [MOVIX] Impossible de trouver le nom du domaine alternatif dans les éléments de la page.");
+      console.log("⚠️ [MOVIX] Impossible de trouver le nom du domaine alternatif dans la page.");
       return;
     }
 
@@ -153,8 +161,10 @@ client.once("clientReady", async () => {
   });
   console.log("---------------------------------------\n");
 
+  // Première exécution immédiate au lancement du bot
   checkMovixUrl();
-
+  
+  // Planification de la vérification toutes les 30 minutes (1800000 ms)
   setInterval(checkMovixUrl, 1800000); 
 });
 
