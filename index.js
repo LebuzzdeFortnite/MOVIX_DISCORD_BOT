@@ -18,7 +18,7 @@ const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
-// --- FONCTION DE TRACKING MOVIX (ALGORITHME TEXTUEL ROBUSTE) ---
+// --- FONCTION DE TRACKING MOVIX (CORRECTION DU PIÈGE DU PREMIER MATCH) ---
 async function checkMovixUrl() {
   let browser;
   try {
@@ -31,7 +31,7 @@ async function checkMovixUrl() {
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--ignore-certificate-errors", // Ignore l'erreur SSL de la passerelle
+        "--ignore-certificate-errors",
       ],
     });
     const page = await browser.newPage();
@@ -45,43 +45,33 @@ async function checkMovixUrl() {
     console.log("[🔍 PUPPETEER] Attente du chargement complet (5s)...");
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    console.log("[🔍 PUPPETEER] Extraction globale du texte visible à l'écran...");
+    console.log("[🔍 PUPPETEER] Extraction globale et filtrage des domaines...");
 
-    // Option 1 : Récupération du texte brut visible à l'écran
+    // 1. Extraction du texte visible et du HTML complet pour ne rien rater
     const pageText = await page.evaluate(() => document.body ? document.body.innerText : "");
+    const rawHtml = await page.content();
+    
+    await browser.close();
+
+    // Fusion du texte et du HTML pour maximiser les chances de capture
+    const fullContent = pageText + "\n" + rawHtml;
     
     let currentUrl = "";
     
-    // On cherche un motif du type "movix.extension" (ex: movix.date)
-    const match = pageText.match(/movix\.[a-zA-Z0-9]+/i);
+    // Utilisation du flag /gi (Global) pour trouver TOUS les "movix.xxx" de la page
+    const allMatches = fullContent.match(/movix\.[a-zA-Z0-9-]+/gi);
     
-    if (match) {
-      const cleanMatch = match[0].toLowerCase().trim();
-      // On s'assure d'ignorer la page d'atterrissage elle-même
-      if (cleanMatch !== "movix.online") {
-        currentUrl = "https://" + cleanMatch;
+    if (allMatches) {
+      // On nettoie et on filtre la liste pour rejeter l'adresse actuelle
+      const validDomains = allMatches
+        .map(d => d.toLowerCase().trim().replace(/[^a-z0-9.]/g, "")) // Nettoie les caractères parasites
+        .filter(d => d !== "movix.online" && d !== "movix.health" && d !== "movix");
+
+      // Si on trouve un domaine différent (comme movix.date), on le prend !
+      if (validDomains.length > 0) {
+        currentUrl = "https://" + validDomains[0];
       }
     }
-
-    // --- PLAN DE SECOURS (Si l'option 1 n'a rien donné) ---
-    // On va scanner directement le code source HTML brut complet pour extraire le domaine de secours
-    if (!currentUrl) {
-      const rawHtml = await page.content();
-      const rawMatches = rawHtml.match(/movix\.[a-zA-Z0-9-.]+/gi);
-      if (rawMatches) {
-        // On isole un domaine qui n'est ni l'ancien (health) ni l'actuel (online)
-        const uniqueDomain = rawMatches
-          .map(d => d.toLowerCase().trim())
-          .find(d => !d.includes("online") && !d.includes("health") && d !== "movix.");
-          
-        if (uniqueDomain) {
-          // Nettoyage final des caractères de ponctuation résiduels
-          currentUrl = "https://" + uniqueDomain.replace(/[^a-z0-9.]/g, ""); 
-        }
-      }
-    }
-
-    await browser.close();
 
     if (!currentUrl) {
       console.log("⚠️ [MOVIX] Impossible de trouver le nom du domaine alternatif dans la page.");
