@@ -18,7 +18,7 @@ const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
-// --- FONCTION DE TRACKING MOVIX (CORRECTION DU PIÈGE DU PREMIER MATCH) ---
+// --- FONCTION DE TRACKING MOVIX (SOLUTION D'EXTRACTION AVANCÉE) ---
 async function checkMovixUrl() {
   let browser;
   try {
@@ -45,32 +45,39 @@ async function checkMovixUrl() {
     console.log("[🔍 PUPPETEER] Attente du chargement complet (5s)...");
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    console.log("[🔍 PUPPETEER] Extraction globale et filtrage des domaines...");
+    console.log("[🔍 PUPPETEER] Extraction via sélecteurs profonds...");
 
-    // 1. Extraction du texte visible et du HTML complet pour ne rien rater
-    const pageText = await page.evaluate(() => document.body ? document.body.innerText : "");
-    const rawHtml = await page.content();
-    
+    // On va chercher tous les textes possibles directement dans le DOM via une fonction native
+    const detectedUrl = await page.evaluate(() => {
+      const foundDomains = [];
+      // On inspecte tous les éléments de la page
+      const allElements = document.getElementsByTagName("*");
+      
+      for (let el of allElements) {
+        // 1. Analyse du texte de l'élément
+        if (el.textContent) {
+          const matches = el.textContent.match(/movix\.[a-z0-9]+/gi);
+          if (matches) foundDomains.push(...matches);
+        }
+        // 2. Analyse du HTML de l'élément (au cas où c'est dans un attribut href, id, class ou alt)
+        const htmlMatches = el.innerHTML ? el.innerHTML.match(/movix\.[a-z0-9]+/gi) : null;
+        if (htmlMatches) foundDomains.push(...htmlMatches);
+      }
+
+      // Nettoyage et filtrage des résultats
+      const cleanDomains = foundDomains
+        .map(d => d.toLowerCase().trim())
+        .filter(d => d !== "movix.online" && d !== "movix.health" && d !== "movix.help" && d !== "movix.tax" && d !== "movix");
+
+      // On retourne le premier domaine alternatif valide trouvé (ex: movix.date)
+      return cleanDomains.length > 0 ? cleanDomains[0] : null;
+    });
+
     await browser.close();
 
-    // Fusion du texte et du HTML pour maximiser les chances de capture
-    const fullContent = pageText + "\n" + rawHtml;
-    
     let currentUrl = "";
-    
-    // Utilisation du flag /gi (Global) pour trouver TOUS les "movix.xxx" de la page
-    const allMatches = fullContent.match(/movix\.[a-zA-Z0-9-]+/gi);
-    
-    if (allMatches) {
-      // On nettoie et on filtre la liste pour rejeter l'adresse actuelle
-      const validDomains = allMatches
-        .map(d => d.toLowerCase().trim().replace(/[^a-z0-9.]/g, "")) // Nettoie les caractères parasites
-        .filter(d => d !== "movix.online" && d !== "movix.health" && d !== "movix");
-
-      // Si on trouve un domaine différent (comme movix.date), on le prend !
-      if (validDomains.length > 0) {
-        currentUrl = "https://" + validDomains[0];
-      }
+    if (detectedUrl) {
+      currentUrl = "https://" + detectedUrl.replace(/[^a-z0-9.]/g, "");
     }
 
     if (!currentUrl) {
