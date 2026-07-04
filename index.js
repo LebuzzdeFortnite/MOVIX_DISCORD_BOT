@@ -19,6 +19,7 @@ let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
 // --- FONCTION DE TRACKING MOVIX ---
+// --- FONCTION DE TRACKING MOVIX (CIBLAGE DU SPAN TRUNCATE) ---
 async function checkMovixUrl() {
   let browser;
   try {
@@ -31,7 +32,7 @@ async function checkMovixUrl() {
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--ignore-certificate-errors", // Sécurité SSL désactivée pour forcer le passage
+        "--ignore-certificate-errors",
       ],
     });
     const page = await browser.newPage();
@@ -42,37 +43,42 @@ async function checkMovixUrl() {
     console.log(`[🔍 PUPPETEER] Connexion à l'adresse cible : ${TARGET_URL}...`);
     await page.goto(TARGET_URL, { waitUntil: "networkidle2", timeout: 60000 });
 
-    console.log("[🔍 PUPPETEER] Attente du chargement des scripts (5s)...");
+    console.log("[🔍 PUPPETEER] Attente du chargement complet (5s)...");
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    console.log("[🔍 PUPPETEER] Analyse et extraction du code source de la page...");
-    const pageContent = await page.content();
+    console.log("[🔍 PUPPETEER] Extraction du domaine depuis le span du bouton...");
+
+    // Ciblage précis basé sur image_9086c8.png
+    const detectedUrl = await page.evaluate(() => {
+      // On récupère spécifiquement les éléments span de la page
+      const spans = document.querySelectorAll("span.truncate, span, button");
+      
+      for (let el of spans) {
+        const text = el.textContent ? el.textContent.trim() : "";
+        
+        // On cherche "movix." à l'intérieur du texte (ex: "Accéder à movix.date")
+        if (text.toLowerCase().includes("movix.")) {
+          const match = text.match(/movix\.[a-zA-Z0-9]+/i);
+          if (match) {
+            const cleanMatch = match[0].toLowerCase().trim();
+            // On ignore le domaine actuel pour ne prendre que le nouveau
+            if (cleanMatch !== "movix.online") {
+              return "https://" + cleanMatch;
+            }
+          }
+        }
+      }
+      return null;
+    });
+
     await browser.close();
 
-    // Regex améliorée pour capturer n'importe quelle extension (ex: movix.date)
-    const matches = pageContent.match(/https?:\/\/(?:www\.)?movix\.[a-zA-Z0-9]+/gi);
-    let currentUrl = "";
-
-    if (matches) {
-      const cleanUrls = matches
-        .map((url) => {
-          // Met en minuscule et nettoie le slash final pour harmoniser
-          return url.toLowerCase().replace(/\/$/, "");
-        })
-        // Filtre pour jeter le site de base (movix.online) et ne garder que le nouveau
-        .filter((url) => url !== TARGET_URL.toLowerCase().replace(/\/$/, "")); 
-      
-      if (cleanUrls.length > 0) {
-        currentUrl = cleanUrls[0];
-      }
-    }
+    let currentUrl = detectedUrl;
 
     if (!currentUrl) {
-      console.log("⚠️ [MOVIX] Aucun domaine alternatif détecté dans le code source.");
+      console.log("⚠️ [MOVIX] Impossible de trouver le nom du domaine alternatif dans les éléments de la page.");
       return;
     }
-
-    currentUrl = currentUrl.replace(/['"; ]+$/, "");
 
     console.log(`[MOVIX] URL trouvée sur le site : ${currentUrl}`);
     console.log(`[MOVIX] Dernière URL enregistrée par le bot : ${lastTrackedUrl || "Aucune (Premier scan)"}`);
