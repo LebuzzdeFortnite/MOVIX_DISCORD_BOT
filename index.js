@@ -13,7 +13,7 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// Nouvelle URL de base mise à jour
+// URL de base
 const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
@@ -31,7 +31,7 @@ async function checkMovixUrl() {
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--ignore-certificate-errors",
+        "--ignore-certificate-errors", // Sécurité SSL désactivée pour forcer le passage
       ],
     });
     const page = await browser.newPage();
@@ -49,14 +49,19 @@ async function checkMovixUrl() {
     const pageContent = await page.content();
     await browser.close();
 
-    const matches = pageContent.match(/https?:\/\/[a-zA-Z0-9.-]*movix\.[a-zA-Z0-9-]+/gi);
+    // Regex améliorée pour capturer n'importe quelle extension (ex: movix.date)
+    const matches = pageContent.match(/https?:\/\/(?:www\.)?movix\.[a-zA-Z0-9]+/gi);
     let currentUrl = "";
 
     if (matches) {
       const cleanUrls = matches
-        .map((url) => url.toLowerCase())
-        // CORRECTION ICI : On exclut le domaine de base actuel (movix.online) pour trouver le vrai lien de secours
-        .filter((url) => !url.includes("movix.online")); 
+        .map((url) => {
+          // Met en minuscule et nettoie le slash final pour harmoniser
+          return url.toLowerCase().replace(/\/$/, "");
+        })
+        // Filtre pour jeter le site de base (movix.online) et ne garder que le nouveau
+        .filter((url) => url !== TARGET_URL.toLowerCase().replace(/\/$/, "")); 
+      
       if (cleanUrls.length > 0) {
         currentUrl = cleanUrls[0];
       }
@@ -143,8 +148,7 @@ client.once("clientReady", async () => {
   console.log("---------------------------------------\n");
 
   checkMovixUrl();
-  
-  
+
   setInterval(checkMovixUrl, 1800000); 
 });
 
