@@ -31,6 +31,7 @@ async function checkMovixUrl() {
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
+        "--ignore-certificate-errors",
       ],
     });
     const page = await browser.newPage();
