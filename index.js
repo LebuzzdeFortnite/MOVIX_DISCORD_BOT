@@ -13,32 +13,30 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// URL de base de la passerelle
+// Configuration de la surveillance
 const TARGET_URL = "https://movix.online/";
 let lastTrackedUrl = "";
 let savedAfkChannelId = null;
 
-// --- FONCTION DE TRACKING MOVIX (BYPASS ANTI-BOT & CONFIGURATION) ---
+// --- FONCTION DE TRACKING MOVIX (COMPATIBLE SERVEUR SANS INTERFACE) ---
 async function checkMovixUrl() {
   let browser;
   try {
-    console.log("\n[🔍 PUPPETEER] Lancement du navigateur (Mode furtif)...");
+    console.log("\n[🔍 PUPPETEER] Lancement du navigateur en mode serveur...");
 
     browser = await puppeteer.launch({
-      // "false" force le navigateur à se comporter à 100% comme un vrai Chrome humain
-      headless: false, 
+      headless: "shell", // Évite l'erreur "Missing X server" sur les VPS Linux
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
-        "--disable-blink-features=AutomationControlled", // Masque le drapeau "robot" de Puppeteer
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled", // Masque l'empreinte du bot
         "--ignore-certificate-errors",
       ],
     });
     
     const page = await browser.newPage();
-    
-    // Déguisement de la fenêtre
     await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -50,38 +48,35 @@ async function checkMovixUrl() {
     console.log("[🔍 PUPPETEER] Attente du chargement complet (5s)...");
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    // --- ZONE DE DEBUGGAGE ---
+    console.log("[🔍 PUPPETEER] Extraction du code source complet...");
+
+    // On récupère le contenu HTML complet généré et le titre pour le débug
+    const content = await page.content();
     const pageTitle = await page.title();
-    console.log(`[🔍 PUPPETEER] Titre de la page détectée : "${pageTitle}"`);
-    // -------------------------
-
-    console.log("[🔍 PUPPETEER] Extraction via sélecteurs profonds...");
-
-    const detectedUrl = await page.evaluate(() => {
-      const foundDomains = [];
-      const allElements = document.getElementsByTagName("*");
-      
-      for (let el of allElements) {
-        if (el.textContent) {
-          const matches = el.textContent.match(/movix\.[a-z0-9]+/gi);
-          if (matches) foundDomains.push(...matches);
-        }
-        const htmlMatches = el.innerHTML ? el.innerHTML.match(/movix\.[a-z0-9]+/gi) : null;
-        if (htmlMatches) foundDomains.push(...htmlMatches);
-      }
-
-      const cleanDomains = foundDomains
-        .map(d => d.toLowerCase().trim())
-        .filter(d => d !== "movix.online" && d !== "movix.health" && d !== "movix.help" && d !== "movix.tax" && d !== "movix");
-
-      return cleanDomains.length > 0 ? cleanDomains[0] : null;
-    });
+    console.log(`[🔍 PUPPETEER] Titre de la page lue : "${pageTitle}"`);
 
     await browser.close();
 
+    // Analyse par Regex globale de toute la structure HTML obtenue
     let currentUrl = "";
-    if (detectedUrl) {
-      currentUrl = "https://" + detectedUrl.replace(/[^a-z0-9.]/g, "");
+    const matches = content.match(/movix\.[a-zA-Z0-9-]+/gi);
+
+    if (matches) {
+      // Nettoyage et filtrage pour éliminer la racine et les domaines inactifs/bloqués
+      const cleanDomains = matches
+        .map(d => d.toLowerCase().trim().replace(/[^a-z0-9.]/g, ""))
+        .filter(d => 
+          d !== "movix.online" && 
+          d !== "movix.health" && 
+          d !== "movix.help" && 
+          d !== "movix.tax" && 
+          d !== "movix"
+        );
+
+      // Si un ou plusieurs domaines valides restent (ex: movix.date), on prend le premier
+      if (cleanDomains.length > 0) {
+        currentUrl = "https://" + cleanDomains[0];
+      }
     }
 
     if (!currentUrl) {
@@ -148,7 +143,8 @@ client.on("channelDelete", async (channel) => {
   }
 });
 
-client.once("clientReady", async () => {
+// === READY EVENT ===
+client.once("ready", async () => {
   console.log(`🤖 Bot connecté en tant que : ${client.user.tag}`);
 
   console.log("\n--- [MINI-DEBUG AFK AU DÉMARRAGE] ---");
@@ -162,7 +158,7 @@ client.once("clientReady", async () => {
   });
   console.log("---------------------------------------\n");
 
-  // Première exécution immédiate au lancement du bot
+  // Première exécution instantanée au démarrage
   checkMovixUrl();
   
   // Planification de la vérification toutes les 30 minutes (1800000 ms)
